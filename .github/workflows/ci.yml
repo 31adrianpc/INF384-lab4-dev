@@ -1,0 +1,297 @@
+name: ci
+
+on:
+  pull_request:
+    paths-ignore: ['**.md']
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP: monedero-andino
+  AWS_REGION: us-east-1
+  SLO_P95: 500
+
+jobs:
+
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run test:unit
+
+  integration:
+    runs-on: ubuntu-24.04
+    env:
+      DB_PATH: /tmp/wallet.db
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run test:integration
+
+  sast:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Instalar semgrep
+        run: pipx install semgrep==1.182.1
+
+      - name: Semgrep
+        env:
+          SEMGREP_SEND_METRICS: 'off'
+        run: |
+          semgrep scan \
+            --config p/nodejs \
+            --config p/owasp-top-ten \
+            --severity ERROR \
+            --error \
+            src/
+
+  build-push:
+    needs: [unit, integration, sast]
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.digest.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Repositorio ECR
+        run: |
+          aws ecr describe-repositories --repository-names "$APP" > /dev/null 2>&1 \
+            || aws ecr create-repository --repository-name "$APP" > /dev/null
+          aws ecr set-repository-policy --repository-name "$APP" --policy-text '{
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Sid": "LambdaPull",
+              "Effect": "Allow",
+              "Principal": { "Service": "lambda.amazonaws.com" },
+              "Action": ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+            }]
+          }' > /dev/null
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --build-arg APP_COMMIT="$GITHUB_SHA" \
+            --tag "$REGISTRY/$APP:$GITHUB_SHA" \
+            .
+
+      - name: Push
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: docker push "$REGISTRY/$APP:$GITHUB_SHA"
+
+      - id: digest
+        name: Digest
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          digest="$(aws ecr describe-images \
+            --repository-name "$APP" \
+            --image-ids "imageTag=$GITHUB_SHA" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          echo "image=$REGISTRY/$APP@$digest" >> "$GITHUB_OUTPUT"
+
+  # Este job no se modifica.
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: deploy-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Lambda
+        env:
+          IMAGE: ${{ needs.build-push.outputs.image }}
+        run: |
+          if aws lambda get-function --function-name "$APP" > /dev/null 2>&1; then
+            aws lambda update-function-code \
+              --function-name "$APP" \
+              --image-uri "$IMAGE" > /dev/null
+          else
+            account="$(aws sts get-caller-identity --query Account --output text)"
+            aws lambda create-function \
+              --function-name "$APP" \
+              --package-type Image \
+              --code ImageUri="$IMAGE" \
+              --role "arn:aws:iam::${account}:role/LabRole" \
+              --architectures x86_64 \
+              --memory-size 1024 \
+              --timeout 15 > /dev/null
+            aws lambda wait function-active-v2 --function-name "$APP"
+          fi
+          aws lambda wait function-updated-v2 --function-name "$APP"
+
+      - name: Function URL
+        run: |
+          if ! aws lambda get-function-url-config --function-name "$APP" > /dev/null 2>&1; then
+            aws lambda create-function-url-config \
+              --function-name "$APP" \
+              --auth-type NONE > /dev/null
+            aws lambda add-permission \
+              --function-name "$APP" \
+              --statement-id url-publica \
+              --action lambda:InvokeFunctionUrl \
+              --principal '*' \
+              --function-url-auth-type NONE > /dev/null
+            aws lambda add-permission \
+              --function-name "$APP" \
+              --statement-id url-publica-invoke \
+              --action lambda:InvokeFunction \
+              --principal '*' \
+              --invoked-via-function-url > /dev/null
+          fi
+          aws lambda get-function-url-config \
+            --function-name "$APP" \
+            --query FunctionUrl \
+            --output text
+
+  smoke:
+    needs: build-push
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: URL
+        id: url
+        run: |
+          for _ in $(seq 1 30); do
+            if url="$(aws lambda get-function-url-config \
+                --function-name "$APP" \
+                --query FunctionUrl \
+                --output text 2> /dev/null)"; then
+              break
+            fi
+            sleep 10
+          done
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke
+        env:
+          BASE_URL: ${{ steps.url.outputs.url }}
+        run: test/smoke/smoke.sh
+
+  e2e:
+    needs: smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Navegador
+        run: npx playwright install --with-deps chromium
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: URL
+        id: url
+        run: |
+          for _ in $(seq 1 30); do
+            if url="$(aws lambda get-function-url-config \
+                --function-name "$APP" \
+                --query FunctionUrl \
+                --output text 2> /dev/null)"; then
+              break
+            fi
+            sleep 10
+          done
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Playwright
+        env:
+          BASE_URL: ${{ steps.url.outputs.url }}
+        run: npm run test:e2e
+
+  load:
+    needs: smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: grafana/setup-k6-action@v1
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: URL
+        id: url
+        run: |
+          for _ in $(seq 1 30); do
+            if url="$(aws lambda get-function-url-config \
+                --function-name "$APP" \
+                --query FunctionUrl \
+                --output text 2> /dev/null)"; then
+              break
+            fi
+            sleep 10
+          done
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: k6
+        env:
+          BASE_URL: ${{ steps.url.outputs.url }}
+        run: k6 run test/load/transferir.js
