@@ -77,7 +77,7 @@ jobs:
           docker run --rm \
             --volume "$PWD:/src" \
             --workdir /src \
-            aquasec/trivy:0.76.1 fs \
+            public.ecr.aws/aquasecurity/trivy:0.76.1 fs \
               --scanners vuln \
               --include-dev-deps \
               --severity HIGH,CRITICAL \
@@ -133,7 +133,7 @@ jobs:
         run: |
           docker run --rm \
             --volume /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:0.76.1 image \
+            public.ecr.aws/aquasecurity/trivy:0.76.1 image \
               --scanners vuln \
               --format json \
               --quiet \

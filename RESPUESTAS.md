@@ -1,38 +1,38 @@
 # Respuestas · Laboratorio 4
 Alumno: [código]
-SLO asignado: [ ]  Presupuesto: [ ] min  Métrica DORA: [ ]
+Presupuesto: [ ] min  Métrica DORA: [ ]
 
 ## Parte 1 · Diagnóstico
 ### Defecto 1
 - Job y etapa:
-- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
-- Defecto de la aplicación que detectaba antes:
-- Defecto de la aplicación que deja de detectarse o se detecta más tarde:
+- Problema que causa en el pipeline:
 - Link al commit:
+- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
+- Evidencia (dato observado, con link al run o fragmento de la salida local):
 ### Defecto 2
 - Job y etapa:
-- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
-- Defecto de la aplicación que detectaba antes:
-- Defecto de la aplicación que deja de detectarse o se detecta más tarde:
+- Problema que causa en el pipeline:
 - Link al commit:
+- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
+- Evidencia (dato observado, con link al run o fragmento de la salida local):
 ### Defecto 3
 - Job y etapa:
-- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
-- Defecto de la aplicación que detectaba antes:
-- Defecto de la aplicación que deja de detectarse o se detecta más tarde:
+- Problema que causa en el pipeline:
 - Link al commit:
+- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
+- Evidencia (dato observado, con link al run o fragmento de la salida local):
 ### Defecto 4
 - Job y etapa:
-- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
-- Defecto de la aplicación que detectaba antes:
-- Defecto de la aplicación que deja de detectarse o se detecta más tarde:
+- Problema que causa en el pipeline:
 - Link al commit:
+- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
+- Evidencia (dato observado, con link al run o fragmento de la salida local):
 ### Defecto 5
 - Job y etapa:
-- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
-- Defecto de la aplicación que detectaba antes:
-- Defecto de la aplicación que deja de detectarse o se detecta más tarde:
+- Problema que causa en el pipeline:
 - Link al commit:
+- Corrección (una o más: mover de etapa / dejar como informativo / eliminar / ajustar configuración / modificar tests):
+- Evidencia (dato observado, con link al run o fragmento de la salida local):
 
 ## Parte 2 · Implementación
 - Link al run en verde en main:
@@ -56,6 +56,21 @@ Link al run medido:
 | e2e | |
 | load | |
 | **Total** | |
+
+Resultado de load en ese run:
+| Métrica | Valor |
+|---|---|
+| p90 | |
+| p95 | |
+| Máximo | |
+| Tasa de error | |
+| Requests por segundo | |
+
+Conclusión sobre el comportamiento bajo carga:
+
+SLO propuesto (percentil, valor, ventana) y justificación:
+
+SLA propuesto y diferencia con el SLO:
 
 Cambios para cumplir el presupuesto:
 | Cambio | Job | Minutos recuperados |
