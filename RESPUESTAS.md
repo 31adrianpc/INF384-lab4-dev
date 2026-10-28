@@ -49,6 +49,7 @@ Link al run medido:
 | unit | |
 | integration | |
 | sast | |
+| sca | |
 | build-push | |
 | deploy | |
 | smoke | |
