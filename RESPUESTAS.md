@@ -1,6 +1,6 @@
 # Respuestas · Laboratorio 4
-Alumno: [20212137]
-Presupuesto: [11 ] min  Métrica DORA: [time to restore ]
+Alumno: 20212137
+Presupuesto: 11 min  Métrica DORA: time to restore
 
 ## Parte 1 · Diagnóstico
 
@@ -77,17 +77,17 @@ Resultado de load en ese run:
 
 Conclusión sobre el comportamiento bajo carga: con 30 usuarios virtuales sostenidos durante 10 minutos, Monedero Andino responde de forma estable: p95 de 51 ms, con una cola corta (p90 49 ms, casi igual al p95) y 0 % de errores; además, el 100 % de las transferencias respondió 200, así que ninguna fue rechazada. El máximo de 335 ms es un caso aislado, compatible con el arranque en frío de una instancia nueva de Lambda, y no mueve el p95. Bajo esta carga el servicio tiene mucha holgura: el umbral anterior de 500 ms era unas 10 veces el p95 real.
 
-SLO propuesto (percentil, valor, ventana) y justificación: el 95 % de las peticiones a la API responde en menos de 150 ms, medido en una ventana móvil de 30 días (en el pipeline, sobre la ventana de la prueba de carga). SLO_P95 = 150. El p95 medido es 51 ms: 150 ms deja un margen de casi 3 veces para absorber la variación normal entre runs y los arranques en frío, sin que load falle por ruido, y sigue detectando una regresión real. Con 500 ms, un servicio casi 10 veces más lento seguía pasando.
+SLO propuesto (percentil, valor, ventana) y justificación: el 95 % de las peticiones a la API responde en menos de 150 ms, medido en una ventana móvil de 30 días (en el pipeline, sobre la ventana de la prueba de carga). SLO_P95 = 150. El p95 medido es 51 ms: 150 ms deja un margen de casi 3 veces para absorber la variación normal entre runs y los arranques en frío, sin que load falle por ruido, y sigue detectando una regresión real. Con 500 ms, un servicio casi 10 veces más lento seguía pasando. Verificación: en el run con los cambios, el p95 fue 19,83 ms frente a 51,22 ms del run de la Parte 2, con el mismo código. La variación entre runs confirma que el margen es necesario.
 
 SLA propuesto y diferencia con el SLO: el 95 % de las peticiones responde en menos de 500 ms y la disponibilidad mensual es de 99,5 %, con compensación al cliente si se incumple. El SLA es un compromiso contractual externo, con consecuencias; el SLO es el objetivo interno del equipo. El SLA es más laxo a propósito: si el SLO se rompe, el equipo se entera y reacciona antes de incumplir el contrato. La diferencia entre ambos es el colchón que protege al cliente de la variación normal.
 
 Cambios para cumplir el presupuesto:
 | Cambio | Job | Minutos recuperados |
 |---|---|---|
-| Etapas de carga 1m/10m/1m → 30s/4m/30s (meseta de 4 min, el mínimo permitido) | load | ~7 |
+| Etapas de carga 1m/10m/1m → 30s/4m/30s (meseta de 4 min, el mínimo permitido) | load | 7:03 (12:11 → 5:08) |
 
-Total resultante: [ ] min
-Link al run en main con los cambios: [ ]
+Total resultante: 7:38 min (unit 0:13, integration 0:14, sast 0:17, sca 0:20, build-push 0:41, deploy 0:18, smoke 0:09, e2e 0:18, load 5:08), bajo el presupuesto de 11 min.
+Link al run en main con los cambios: https://github.com/31adrianpc/INF384-lab4-dev/actions/runs/40966817017
 
 Riesgo aceptado (defecto de la aplicación concreto y efecto en la métrica DORA asignada): con una meseta de 4 min en lugar de 10, el pipeline deja de detectar defectos que degradan el servicio de forma gradual. Por ejemplo, si `db.js` abriera una conexión SQLite nueva por cada request sin cerrarla, los descriptores de archivo se agotarían después de varios minutos de carga sostenida y la API empezaría a responder 500. La prueba de 4 min terminaría en verde y el defecto se descubriría en producción. Efecto en time to restore: sube para ese incidente. Como la degradación es gradual, ninguna prueba del pipeline la detecta; se descubre por quejas o métricas de producción, y diagnosticar una fuga toma más que un error inmediato. Como contrapeso, el pipeline más corto (~8 min en vez de ~15) reduce el tiempo de redesplegar la reversión en todos los incidentes, pero no compensa el tiempo de detección de este tipo de defecto.
 
