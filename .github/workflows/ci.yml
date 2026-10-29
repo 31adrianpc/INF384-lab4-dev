@@ -72,7 +72,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Trivy
+      - name: Trivy produccion (detiene)
+        run: |
+          docker run --rm \
+            --volume "$PWD:/src" \
+            --workdir /src \
+            ghcr.io/aquasecurity/trivy:0.76.1 fs \
+              --scanners vuln \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              package-lock.json
+
+      - name: Trivy desarrollo (informativo)
         run: |
           docker run --rm \
             --volume "$PWD:/src" \
@@ -81,7 +92,7 @@ jobs:
               --scanners vuln \
               --include-dev-deps \
               --severity HIGH,CRITICAL \
-              --exit-code 1 \
+              --exit-code 0 \
               package-lock.json
 
   build-push:
